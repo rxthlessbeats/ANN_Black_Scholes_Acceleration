@@ -1,0 +1,45 @@
+[project]
+name = "bs-accel"
+version = "0.1.0"
+description = "Train the notebook ANNs that approximate Black-Scholes prices and implied volatility."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+    "scikit-learn",
+    "tensorflow",
+]
+
+[project.optional-dependencies]
+notebooks = [
+    "optuna",
+    "tensorflow-model-optimization",
+]
+
+[project.scripts]
+black-scholes = "bs_accel.cli:main"
+
+[dependency-groups]
+dev = [
+    "pre-commit",
+    "pytest",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bs_accel"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = ["notebooks", "data", "model"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
