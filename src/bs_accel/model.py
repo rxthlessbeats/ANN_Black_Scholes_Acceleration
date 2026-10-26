@@ -15,7 +15,6 @@ class ModelSpec:
     phase2_epochs: int
     exp_rate: float
     patience: int
-    initial_lr: float = 0.001
 
 
 # pricing: ann_opt.ipynb best width, plus the recorded second-round learning rate.
@@ -44,12 +43,9 @@ MODELS: dict[str, ModelSpec] = {
 
 def build_mlp(n_features: int, n_units: int, n_layers: int) -> Sequential:
     """Stack from the notebooks: `n_layers` ReLU blocks, then a linear output."""
-    model = Sequential()
-    # Keras 3 wants Input(shape) in place of the notebooks' input_dim argument.
-    model.add(Input(shape=(n_features,)))
-    model.add(Dense(n_units, activation="relu", kernel_initializer="glorot_uniform"))
-    for _ in range(n_layers - 1):
-        model.add(Dense(n_units, activation="relu", kernel_initializer="glorot_uniform"))
-    model.add(Dense(1, kernel_initializer="glorot_uniform"))
+    model = Sequential([Input(shape=(n_features,))])
+    for _ in range(n_layers):
+        model.add(Dense(n_units, activation="relu"))
+    model.add(Dense(1))
     model.compile(optimizer="adam", loss="mse")
     return model

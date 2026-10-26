@@ -77,6 +77,7 @@ dependencies = [
 notebooks = [
     { name = "optuna" },
     { name = "tensorflow-model-optimization" },
+    { name = "tf-keras" },
 ]
 
 [package.dev-dependencies]
@@ -94,6 +95,7 @@ requires-dist = [
     { name = "scipy" },
     { name = "tensorflow" },
     { name = "tensorflow-model-optimization", marker = "extra == 'notebooks'" },
+    { name = "tf-keras", marker = "extra == 'notebooks'" },
 ]
 provides-extras = ["notebooks"]
 

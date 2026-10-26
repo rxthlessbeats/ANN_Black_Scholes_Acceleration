@@ -7,9 +7,14 @@ from pathlib import Path
 
 import numpy as np
 
-from bs_accel.data import TASKS, generate_dataset, load_dataset, save_dataset, split_dataset
-from bs_accel.evaluate import load_trained_model, predict, test_loss
-from bs_accel.train import save_checkpoint, train_task
+from bs_accel.data import (
+    TASKS,
+    black_scholes,
+    generate_dataset,
+    load_dataset,
+    save_dataset,
+    split_dataset,
+)
 
 
 def repo_root() -> Path:
@@ -25,10 +30,9 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n")
 
 
-def _require(path: Path, hint: str) -> Path:
+def _require(path: Path, hint: str) -> None:
     if not path.exists():
         raise FileNotFoundError(f"Missing {path}. {hint}")
-    return path
 
 
 def _paths(root: Path, name: str) -> tuple[Path, Path, Path]:
@@ -49,6 +53,8 @@ def cmd_prepare(args) -> int:
 
 
 def cmd_train(args) -> int:
+    from bs_accel.train import save_checkpoint, train_task
+
     root = repo_root()
     data_path, checkpoint, metrics_path = _paths(root, args.task)
     _require(data_path, f"Run `black-scholes prepare --task {args.task}` first.")
@@ -74,6 +80,8 @@ def cmd_train(args) -> int:
 
 
 def cmd_evaluate(args) -> int:
+    from bs_accel.evaluate import load_trained_model, test_loss
+
     root = repo_root()
     data_path, checkpoint, metrics_path = _paths(root, args.task)
     _require(data_path, f"Run `black-scholes prepare --task {args.task}` first.")
@@ -96,11 +104,16 @@ def cmd_predict(args) -> int:
     root = repo_root()
     data_path, checkpoint, _ = _paths(root, args.task)
     _require(data_path, f"Run `black-scholes prepare --task {args.task}` first.")
-    _require(checkpoint, f"Run `black-scholes train --task {args.task}` first.")
     features, target = load_dataset(data_path)
     _, x_test, _, _ = split_dataset(features, target, args.task)
-    model = load_trained_model(checkpoint)
-    predictions = predict(model, x_test)
+    if args.task == "pricing" and not args.ann:
+        predictions = black_scholes(*x_test.T)
+    else:
+        from bs_accel.evaluate import load_trained_model, predict
+
+        _require(checkpoint, f"Run `black-scholes train --task {args.task}` first.")
+        model = load_trained_model(checkpoint)
+        predictions = predict(model, x_test)
     out = root / "model" / args.task / "predictions.npy"
     out.parent.mkdir(parents=True, exist_ok=True)
     np.save(out, predictions)
@@ -111,25 +124,21 @@ def cmd_predict(args) -> int:
 
 def cmd_demo(_args) -> int:
     """Pricing path on a few hundred synthetic rows, one epoch per phase."""
+    from bs_accel.evaluate import predict
+    from bs_accel.train import save_checkpoint, train_task
+
     root = repo_root()
     task = "pricing"
-    features, target = generate_dataset(task, n_samples=256, seed=TASKS[task].lhs_seed)
-    data_path = root / "data" / "demo.npz"
+    features, target = generate_dataset(task, n_samples=256)
+    data_path, checkpoint, metrics_path = _paths(root, "demo")
     save_dataset(data_path, features, target)
     model, metrics = train_task(task, features, target, epochs=1, phase2_epochs=1, verbose=0)
-    checkpoint = root / "model" / "demo" / "model.keras"
     save_checkpoint(model, checkpoint)
-    _, x_test, _, y_test = split_dataset(features, target, task)
-    metrics = {
-        "task": task,
-        "test_loss": test_loss(model, x_test, y_test),
-        "n_train": metrics["n_train"],
-        "n_test": int(len(y_test)),
-        "checkpoint": str(checkpoint),
-    }
-    _write_json(root / "model" / "demo" / "metrics.json", metrics)
+    metrics["checkpoint"] = str(checkpoint)
+    _write_json(metrics_path, metrics)
+    _, x_test, _, _ = split_dataset(features, target, task)
     predictions = predict(model, x_test[:8])
-    prediction_path = root / "model" / "demo" / "predictions.npy"
+    prediction_path = checkpoint.parent / "predictions.npy"
     np.save(prediction_path, predictions)
     print(
         f"demo task={task} samples={len(target)} test_mse={metrics['test_loss']:.6e} "
@@ -161,8 +170,13 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--task", choices=tasks, default="pricing")
     evaluate.set_defaults(func=cmd_evaluate)
 
-    predict_parser = sub.add_parser("predict", help="Predict the held-out split")
+    predict_parser = sub.add_parser(
+        "predict", help="Predict the held-out split; exact pricing by default"
+    )
     predict_parser.add_argument("--task", choices=tasks, default="pricing")
+    predict_parser.add_argument(
+        "--ann", action="store_true", help="Use the trained ANN for pricing"
+    )
     predict_parser.set_defaults(func=cmd_predict)
 
     demo = sub.add_parser("demo", help="Smoke test on synthetic pricing data")
@@ -174,7 +188,7 @@ def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     try:
         code = args.func(args)
-    except FileNotFoundError as error:
+    except (FileNotFoundError, ValueError) as error:
         print(error, file=sys.stderr)
         code = 1
     sys.exit(code)

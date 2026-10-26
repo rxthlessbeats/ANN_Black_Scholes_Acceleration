@@ -15,6 +15,7 @@ dependencies = [
 notebooks = [
     "optuna",
     "tensorflow-model-optimization",
+    "tf-keras",
 ]
 
 [project.scripts]
